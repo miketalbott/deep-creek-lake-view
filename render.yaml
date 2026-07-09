@@ -1,0 +1,19 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy: push to GitHub, then Dashboard → New → Blueprint → connect repo.
+# Requires output/webmap/ to be committed (run scripts/step05_webmap.py and
+# scripts/step06_pointdata.py locally first).
+
+services:
+  - type: web
+    name: deep-creek-lake-view
+    runtime: static
+    buildCommand: echo "Serving prebuilt webmap"
+    staticPublishPath: ./output/webmap
+    envVars:
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+    buildFilter:
+      paths:
+        - output/webmap/**
+        - render.yaml

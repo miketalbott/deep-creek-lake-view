@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Creek Lake &mdash; Lake View Analysis</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  #map { height: 100%; }
+  .panel {
+    position: absolute; top: 12px; right: 12px; z-index: 1000;
+    background: rgba(255,255,255,.96); border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.25); padding: 14px 16px; width: 265px;
+    font-size: 13px; color: #222;
+  }
+  .panel h1 { font-size: 15px; margin: 0 0 4px; }
+  .panel .sub { color: #666; font-size: 11.5px; margin-bottom: 10px; line-height: 1.35; }
+  .panel label { display: block; margin: 3px 0; cursor: pointer; }
+  .panel .group { font-weight: 600; margin-top: 9px; margin-bottom: 3px; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .04em; color: #555; }
+  .panel input[type=range] { width: 100%; }
+  #legend { height: 12px; border-radius: 3px; margin: 6px 0 2px; }
+  .legend-labels { display: flex; justify-content: space-between; font-size: 10.5px; color: #555; }
+  .leaflet-popup-content { font-size: 12.5px; line-height: 1.45; }
+  .leaflet-popup-content b.addr { font-size: 13.5px; }
+  .pt td { padding: 1px 8px 1px 0; }
+  .pt td:nth-child(2), .pt td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
+  .pt th { text-align: right; font-weight: 600; padding-left: 8px; color:#555 }
+  .pt th:first-child { text-align: left; padding-left: 0; }
+  .muted { color: #777; font-size: 11.5px; }
+  #inspectResult { margin-top: 5px; line-height: 1.4; }
+  #inspectResult .big { font-size: 14px; font-weight: 700; }
+  #inspectClear { color: #0066cc; cursor: pointer; text-decoration: underline; font-size: 11.5px; }
+  .panel select, .panel input[type=number] { font-size: 12px; }
+  #rankBtn { margin-top: 6px; width: 100%; padding: 5px; font-size: 12.5px; cursor: pointer;
+    background: #0066cc; color: #fff; border: 0; border-radius: 6px; }
+  #rankBtn:hover { background: #0055aa; }
+  #rankList { margin-top: 6px; max-height: 220px; overflow-y: auto; }
+  .rankRow { display: flex; gap: 6px; padding: 3px 4px; border-radius: 4px; cursor: pointer;
+    font-size: 11.5px; align-items: baseline; }
+  .rankRow:hover { background: #eef4fb; }
+  .rankRow .sc { font-weight: 700; min-width: 24px; color: #0066cc; }
+  .rankRow .pr { margin-left: auto; color: #555; white-space: nowrap; }
+  .blendRow { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #555; }
+  .blendRow input { flex: 1; }
+  .forsale { color: #c4008f; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="panel">
+  <h1>Deep Creek Lake View</h1>
+  <div class="sub">How much of the lake is visible from each point, from terrain line-of-sight
+    (bare earth &mdash; trees/buildings ignored).</div>
+
+  <div class="group">Metric</div>
+  <label><input type="radio" name="metric" value="area" checked> Visible lake area (acres)</label>
+  <label><input type="radio" name="metric" value="solid"> Perceived size (screen-space)</label>
+
+  <div class="group">Eye height</div>
+  <label><input type="radio" name="eye" value="2m" checked> Ground level (2 m)</label>
+  <label><input type="radio" name="eye" value="8m"> Second story (8 m)</label>
+
+  <div class="group">Heatmap opacity</div>
+  <input type="range" id="opacity" min="0" max="100" value="70">
+
+  <div class="group">Overlays</div>
+  <label><input type="checkbox" id="parcelsChk" checked> Parcel boundaries (click for stats)</label>
+  <label><input type="checkbox" id="heatChk" checked> View heatmap</label>
+
+  <div id="legend"></div>
+  <div class="legend-labels"><span>no view</span><span id="legendMid"></span><span id="legendMax"></span></div>
+
+  <div class="group">Point inspector</div>
+  <div class="muted">Click anywhere on the map to raytrace exactly which water is visible from that spot.</div>
+  <div id="inspectResult"></div>
+
+  <div class="group">Lot finder</div>
+  <label>Rank by
+    <select id="rankBy">
+      <option value="view">Best view</option>
+      <option value="perdollar">View per $ (assessed total)</option>
+      <option value="perland">View per $ (assessed land)</option>
+      <option value="perlist">View per $ (asking price)</option>
+    </select>
+  </label>
+  <div class="blendRow">lake acres <input type="range" id="blend" min="0" max="100" value="50"> feels big</div>
+  <label><input type="checkbox" id="resOnly" checked> residential only</label>
+  <label><input type="checkbox" id="vacantOnly"> undeveloped lots only</label>
+  <label>Min lot size <input type="number" id="minAcres" value="0" step="0.25" min="0" style="width:52px"> acres</label>
+  <button id="rankBtn">Score &amp; rank lots</button>
+  <div id="rankList"></div>
+</div>
+
+<script src="https://unpkg.com/proj4@2.15.0/dist/proj4.js"></script>
+<script src="config.js"></script>
+<script src="lake.js"></script>
+<script src="parcels.js"></script>
+<script src="dem.js"></script>
+<script src="lakepts.js"></script>
+<script>
+const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([39.505, -79.316], 12);
+
+const imagery = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, attribution: 'Esri World Imagery' }).addTo(map);
+const streets = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+L.control.layers({ 'Satellite': imagery, 'Streets': streets }, null,
+  { position: 'bottomleft' }).addTo(map);
+
+// --- heatmap overlays ---
+const overlays = {};
+for (const [name, cfg] of Object.entries(CONFIG.layers)) {
+  overlays[name] = L.imageOverlay(cfg.png, cfg.bounds, { opacity: 0.7, interactive: false });
+}
+let current = null;
+
+function layerName() {
+  const metric = document.querySelector('input[name=metric]:checked').value;
+  const eye = document.querySelector('input[name=eye]:checked').value;
+  return `${metric}_${eye}`;
+}
+
+function fmtMetric(name, v) {
+  if (name.startsWith('area')) {
+    const ac = v / 4046.86;
+    return ac >= 100 ? Math.round(ac).toLocaleString() + ' ac' : ac.toFixed(1) + ' ac';
+  }
+  return (v * 1000).toPrecision(3) + ' msr';
+}
+
+function updateHeat() {
+  const name = layerName();
+  const show = document.getElementById('heatChk').checked;
+  if (current && (current !== name || !show)) { map.removeLayer(overlays[current]); current = null; }
+  if (show && current !== name) { overlays[name].addTo(map); current = name; }
+  const cfg = CONFIG.layers[name];
+  document.getElementById('legendMax').textContent = '\u2265 ' + fmtMetric(name, cfg.vmax);
+  document.getElementById('legendMid').textContent = fmtMetric(name, cfg.vmax * 0.25); // sqrt stretch midpoint
+}
+
+document.querySelectorAll('input[name=metric], input[name=eye]').forEach(el =>
+  el.addEventListener('change', updateHeat));
+document.getElementById('heatChk').addEventListener('change', updateHeat);
+document.getElementById('opacity').addEventListener('input', e => {
+  const o = e.target.value / 100;
+  Object.values(overlays).forEach(l => l.setOpacity(o));
+});
+
+// legend gradient
+const stops = CONFIG.legend_stops.map(s =>
+  `rgb(${s.color.join(',')}) ${(s.frac * 100).toFixed(1)}%`);
+document.getElementById('legend').style.background = `linear-gradient(90deg, ${stops.join(',')})`;
+
+// --- lake outline ---
+L.geoJSON(LAKE, { style: { color: '#57c4ff', weight: 1.5, fill: false } }).addTo(map);
+
+// --- parcels ---
+let rankActive = false;  // lot-finder ranking currently applied
+function money(v) { return v ? '$' + Number(v).toLocaleString() : '\u2014'; }
+
+function popupHtml(p) {
+  const addr = p.ADDRESS || '(no address on file)';
+  const rows = [
+    ['Visible lake', (p.area_2m_mean_ac ?? 0).toFixed(1) + ' ac', (p.area_8m_mean_ac ?? 0).toFixed(1) + ' ac'],
+    ['&hellip; best spot', (p.area_2m_max_ac ?? 0).toFixed(1) + ' ac', (p.area_8m_max_ac ?? 0).toFixed(1) + ' ac'],
+    ['Perceived view', ((p.solid_2m_mean ?? 0) * 1000).toPrecision(3) + ' msr',
+      ((p.solid_8m_mean ?? 0) * 1000).toPrecision(3) + ' msr'],
+  ].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+  const sdat = p.SDATWEBADR
+    ? `<br><a href="${p.SDATWEBADR}" target="_blank">SDAT property record</a>` : '';
+  const sale = p.CONSIDR1
+    ? ` \u00b7 sold ${money(p.CONSIDR1)} (${String(p.TRADATE || '').slice(0, 4)})` : '';
+  const listing = p.LIST_PRICE
+    ? `<div class="forsale">FOR SALE \u00b7 ${money(p.LIST_PRICE)}` +
+      `${p.LIST_URL ? ` \u00b7 <a href="${p.LIST_URL}" target="_blank">listing</a>` : ''}</div>` : '';
+  const score = p._score != null
+    ? `<br><b>Lot-finder score: ${p._score}/100</b> <span class="muted">(current ranking)</span>` : '';
+  return `<b class="addr">${addr}</b><br>
+    <span class="muted">${p.DESCLU || ''}${p.ACRES ? ' \u00b7 ' + p.ACRES + ' ac lot' : ''}` +
+    `${p.YEARBLT ? ' \u00b7 built ' + p.YEARBLT : ''}${p.NFMTTLVL ? ' \u00b7 assessed ' + money(p.NFMTTLVL) : ''}${sale}</span>
+    ${listing}
+    <table class="pt"><tr><th></th><th>@ 2 m</th><th>@ 8 m</th></tr>${rows}</table>
+    <span class="muted">mean over lot; msr = millisteradian</span>${score}${sdat}`;
+}
+
+const parcelBaseStyle = { color: '#ffffff', weight: 0.8, opacity: 0.55, fillOpacity: 0 };
+function parcelStyle(f) {
+  const p = f.properties;
+  if (p._score != null) return { color: '#ffffff', weight: 0.8, opacity: 0.7,
+    fillColor: scoreColor(p._score / 100), fillOpacity: 0.6 };
+  if (rankActive) return { color: '#ffffff', weight: 0.5, opacity: 0.2, fillOpacity: 0 };
+  return parcelBaseStyle;
+}
+
+const parcelLayer = L.geoJSON(PARCELS, {
+  style: parcelStyle,
+  onEachFeature: (f, layer) => {
+    f._layer = layer;
+    layer.bindPopup(() => popupHtml(f.properties), { maxWidth: 320, autoPan: false });
+    layer.on('mouseover', () => layer.setStyle({ weight: 2.5, color: '#ffe14d', opacity: 1 }));
+    layer.on('mouseout', () => parcelLayer.resetStyle(layer));
+    // parcels swallow map clicks at high zoom; run the inspector from here too
+    layer.on('click', e => runInspect(e.latlng));
+  }
+});
+
+function updateParcels() {
+  const show = document.getElementById('parcelsChk').checked
+    && (map.getZoom() >= 14 || rankActive);
+  if (show && !map.hasLayer(parcelLayer)) parcelLayer.addTo(map);
+  if (!show && map.hasLayer(parcelLayer)) map.removeLayer(parcelLayer);
+}
+document.getElementById('parcelsChk').addEventListener('change', updateParcels);
+map.on('zoomend', updateParcels);
+
+// --- point inspector: in-browser raytrace to every lake sample point ---
+const UTM = `+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs`;
+const R_EARTH = 6378137.0;
+let DEM = null;
+function demGrid() {
+  if (!DEM) {
+    const bin = atob(DEMB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    DEM = new Uint16Array(bytes.buffer);  // decimeters
+  }
+  return DEM;
+}
+
+function bilinear(x, y) {
+  const m = DEMMETA, g = demGrid();
+  const fc = (x - m.x0) / m.res - 0.5, fr = (m.y0 - y) / m.res - 0.5;
+  const r0 = Math.max(0, Math.min(m.h - 2, Math.floor(fr)));
+  const c0 = Math.max(0, Math.min(m.w - 2, Math.floor(fc)));
+  const dr = fr - r0, dc = fc - c0;
+  return (g[r0 * m.w + c0] * (1 - dr) * (1 - dc) + g[r0 * m.w + c0 + 1] * (1 - dr) * dc
+        + g[(r0 + 1) * m.w + c0] * dr * (1 - dc) + g[(r0 + 1) * m.w + c0 + 1] * dr * dc) / 10.0;
+}
+
+function raytraceAll(ox, oy, eyeH) {
+  const m = DEMMETA;
+  const eyeZ = bilinear(ox, oy) + eyeH;
+  const tz = m.water + m.targetH;
+  const vis = new Uint8Array(LAKEPTS.length);
+  for (let i = 0; i < LAKEPTS.length; i++) {
+    const dx = LAKEPTS[i][0] - ox, dy = LAKEPTS[i][1] - oy;
+    const dist = Math.hypot(dx, dy);
+    const n = Math.max(Math.ceil(dist / m.res), 2);
+    const targetAdj = tz - m.curv * dist * dist / (2 * R_EARTH);
+    let ok = 1;
+    for (let k = 1; k < n; k++) {
+      const t = k / n, d = t * dist;
+      const terr = bilinear(ox + t * dx, oy + t * dy) - m.curv * d * d / (2 * R_EARTH);
+      if (eyeZ + t * (targetAdj - eyeZ) < terr - 1e-6) { ok = 0; break; }
+    }
+    vis[i] = ok;
+  }
+  return { vis, eyeZ };
+}
+
+const inspectGroup = L.layerGroup().addTo(map);
+let inspectLatLng = null;
+const to4326 = xy => proj4(UTM, 'EPSG:4326', xy);
+const toUTM = ll => proj4('EPSG:4326', UTM, [ll.lng, ll.lat]);
+
+function clearInspect() {
+  inspectGroup.clearLayers();
+  inspectLatLng = null;
+  document.getElementById('inspectResult').innerHTML = '';
+}
+
+function runInspect(latlng) {
+  const m = DEMMETA;
+  const [ox, oy] = toUTM(latlng);
+  if (ox < m.x0 || ox > m.x0 + m.w * m.res || oy > m.y0 || oy < m.y0 - m.h * m.res) {
+    document.getElementById('inspectResult').innerHTML =
+      '<span class="muted">Outside the analyzed area.</span>';
+    return;
+  }
+  inspectLatLng = latlng;
+  const eyeH = document.querySelector('input[name=eye]:checked').value === '2m' ? 2.0 : 8.0;
+  const t0 = performance.now();
+  const { vis, eyeZ } = raytraceAll(ox, oy, eyeH);
+  const ms = performance.now() - t0;
+
+  inspectGroup.clearLayers();
+  let nVis = 0;
+  for (let i = 0; i < LAKEPTS.length; i++) {
+    const [lon, lat] = to4326(LAKEPTS[i]);
+    if (vis[i]) {
+      nVis++;
+      L.circleMarker([lat, lon], { radius: 3, stroke: false,
+        fillColor: '#00d5ff', fillOpacity: 0.95, interactive: false }).addTo(inspectGroup);
+    } else {
+      L.circleMarker([lat, lon], { radius: 1.7, stroke: false,
+        fillColor: '#111', fillOpacity: 0.35, interactive: false }).addTo(inspectGroup);
+    }
+  }
+  L.marker(latlng, { interactive: false, icon: L.divIcon({
+    className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+    html: '<div style="font-size:24px;line-height:26px;text-align:center;' +
+          'color:#ff3b30;text-shadow:0 0 3px #fff,0 0 3px #fff">&#9733;</div>'
+  })}).addTo(inspectGroup);
+
+  const acres = nVis * m.sampleArea / 4046.86;
+  const total = LAKEPTS.length * m.sampleArea / 4046.86;
+  const pct = 100 * nVis / LAKEPTS.length;
+  document.getElementById('inspectResult').innerHTML =
+    `<span class="big">${Math.round(acres).toLocaleString()} acres visible</span>` +
+    ` <span class="muted">(${pct.toFixed(0)}% of lake)</span><br>` +
+    `<span class="muted">eye ${eyeH} m above ground, elev ${Math.round(eyeZ - eyeH)} m ` +
+    `&middot; ${ms.toFixed(0)} ms</span><br>` +
+    `<span id="inspectClear">clear</span>`;
+  document.getElementById('inspectClear').onclick = clearInspect;
+}
+
+map.on('click', e => runInspect(e.latlng));
+document.querySelectorAll('input[name=eye]').forEach(el =>
+  el.addEventListener('change', () => { if (inspectLatLng) runInspect(inspectLatLng); }));
+
+// --- lot finder: configurable score + ranking ---
+// linear turbo ramp; legend stops encode turbo(sqrt(f)), so index by t^2
+function scoreColor(t) {
+  const stops = CONFIG.legend_stops;
+  const c = stops[Math.round(Math.min(1, Math.max(0, t * t)) * (stops.length - 1))].color;
+  return `rgb(${c.join(',')})`;
+}
+
+// percentile rank (0..1) lookup for an array of raw values
+function ranker(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = sorted.length;
+  return v => {
+    let lo = 0, hi = n;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < v) lo = m + 1; else hi = m; }
+    return n > 1 ? lo / (n - 1) : 0;
+  };
+}
+
+function priceOf(p, rankBy) {
+  if (rankBy === 'perlist') return p.LIST_PRICE;
+  if (rankBy === 'perland') return p.NFMLNDVL;
+  if (rankBy === 'perdollar') return p.NFMTTLVL;
+  return null;
+}
+
+function runRanking() {
+  const eye = document.querySelector('input[name=eye]:checked').value;
+  const blend = +document.getElementById('blend').value / 100;
+  const rankBy = document.getElementById('rankBy').value;
+  const resOnly = document.getElementById('resOnly').checked;
+  const vacantOnly = document.getElementById('vacantOnly').checked;
+  const minAcres = +document.getElementById('minAcres').value || 0;
+  const areaKey = `area_${eye}_max_ac`, solidKey = `solid_${eye}_max`;
+
+  PARCELS.features.forEach(f => { delete f.properties._score; });
+  const cand = PARCELS.features.filter(f => {
+    const p = f.properties;
+    if (!p.cells || (p[areaKey] || 0) <= 0) return false;
+    if (resOnly && !/Residential|Town House/i.test(p.DESCLU || '')) return false;
+    if (vacantOnly && p.YEARBLT) return false;
+    if ((p.ACRES || 0) < minAcres) return false;
+    // per-$ modes: skip slivers and token-value parcels that distort the ratio
+    if (rankBy !== 'view' && !(priceOf(p, rankBy) >= 10000 && (p.ACRES || 0) >= 0.1)) return false;
+    return true;
+  });
+  const listEl = document.getElementById('rankList');
+  if (!cand.length) {
+    listEl.innerHTML = '<span class="muted">No lots match the filters' +
+      (rankBy === 'perlist' ? ' (add asking prices to data/listings.csv and rerun step04+05)' : '') +
+      '.</span>';
+    rankActive = false;
+    parcelLayer.setStyle(parcelStyle);
+    return;
+  }
+
+  const rArea = ranker(cand.map(f => f.properties[areaKey]));
+  const rSolid = ranker(cand.map(f => f.properties[solidKey]));
+  const view = f => (1 - blend) * rArea(f.properties[areaKey]) + blend * rSolid(f.properties[solidKey]);
+  let raw;
+  if (rankBy === 'view') raw = cand.map(view);
+  else raw = cand.map(f => view(f) / priceOf(f.properties, rankBy));
+  const rFinal = ranker(raw);
+  cand.forEach((f, i) => { f.properties._score = Math.round(100 * rFinal(raw[i])); });
+
+  rankActive = true;
+  parcelLayer.setStyle(parcelStyle);
+  updateParcels();
+
+  const top = [...cand].sort((a, b) => b.properties._score - a.properties._score
+    || b.properties[areaKey] - a.properties[areaKey]).slice(0, 15);
+  listEl.innerHTML =
+    `<div class="muted">${cand.length.toLocaleString()} lots scored \u00b7 top 15 ` +
+    `\u00b7 <span id="rankClear" style="color:#0066cc;cursor:pointer;text-decoration:underline">clear</span></div>` +
+    top.map((f, i) => {
+      const p = f.properties;
+      const price = priceOf(p, rankBy) ?? p.NFMTTLVL;
+      return `<div class="rankRow" data-i="${i}">
+        <span class="sc">${p._score}</span>
+        <span>${p.ADDRESS || (p.ACCTID ? 'unaddressed \u00b7 #' + p.ACCTID : '(no address)')}` +
+        `${p.LIST_PRICE ? ' <span class="forsale">\u25cf</span>' : ''}</span>
+        <span class="pr">${price ? '$' + Math.round(price / 1000) + 'k' : '\u2014'}</span>
+      </div>`;
+    }).join('');
+  document.getElementById('rankClear').onclick = () => {
+    PARCELS.features.forEach(f => { delete f.properties._score; });
+    rankActive = false;
+    parcelLayer.setStyle(parcelStyle);
+    updateParcels();
+    listEl.innerHTML = '';
+  };
+  listEl.querySelectorAll('.rankRow').forEach(row => {
+    row.onclick = () => {
+      const f = top[+row.dataset.i];
+      map.fitBounds(f._layer.getBounds(), { maxZoom: 16 });
+      f._layer.openPopup();
+    };
+  });
+}
+document.getElementById('rankBtn').addEventListener('click', runRanking);
+
+updateHeat();
+updateParcels();
+</script>
+</body>
+</html>

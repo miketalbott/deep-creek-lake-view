@@ -1,0 +1,30 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Large / regenerable analysis intermediates (rebuilt by scripts/step01–04)
+data/*.tif
+data/*.npz
+data/parcels_raw.geojson
+data/lake_utm.geojson
+data/lake_points.npz
+
+# Intermediate GIS / preview outputs (webmap is the deployable app)
+output/rasters/
+output/*.png

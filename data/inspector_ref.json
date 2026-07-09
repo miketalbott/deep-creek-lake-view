@@ -1,0 +1,1 @@
+{"tests": [{"name": "shore_20pct", "ox": 645725.0, "oy": 4374965.0, "eye": 2.0, "expected": 507}, {"name": "shore_median", "ox": 644185.0, "oy": 4375035.0, "eye": 2.0, "expected": 836}, {"name": "uphill_max", "ox": 643735.0, "oy": 4375005.0, "eye": 2.0, "expected": 3046}, {"name": "uphill_max_8m", "ox": 643735.0, "oy": 4375005.0, "eye": 8.0, "expected": 3377}]}
