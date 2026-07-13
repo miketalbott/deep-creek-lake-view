@@ -95,6 +95,12 @@ def main():
         for f in np.linspace(0, 1, 24)
     ]
     config["legend_stops"] = stops
+    routing_meta = DATA / "routing_meta.json"
+    config["routing"] = (
+        json.loads(routing_meta.read_text())
+        if routing_meta.exists()
+        else {"destinations": []}
+    )
 
     (WEBMAP / "config.js").write_text("var CONFIG = " + json.dumps(config) + ";\n")
 

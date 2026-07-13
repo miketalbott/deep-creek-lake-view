@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "description": "Routing targets used by step04_routes.py. Add another group or point to extend scoring; a future geocoded home address uses the same structure.",
+  "groups": [
+    {
+      "id": "i68",
+      "label": "I-68 eastbound access",
+      "points": [
+        {
+          "name": "Keysers Ridge / US 219",
+          "lat": 39.6894,
+          "lon": -79.2494
+        }
+      ]
+    },
+    {
+      "id": "honi",
+      "label": "Honi Honi Bar",
+      "points": [
+        {
+          "name": "Honi Honi Bar",
+          "lat": 39.5046084,
+          "lon": -79.3249268
+        }
+      ]
+    },
+    {
+      "id": "wisp",
+      "label": "Wisp Resort",
+      "points": [
+        {
+          "name": "Wisp main lodge",
+          "lat": 39.550505,
+          "lon": -79.3669351
+        }
+      ]
+    },
+    {
+      "id": "grocery",
+      "label": "Nearest full grocery",
+      "points": [
+        {
+          "name": "Deep Creek Shop 'n Save",
+          "lat": 39.5629548,
+          "lon": -79.3562163
+        },
+        {
+          "name": "Oakland Walmart",
+          "lat": 39.4222087,
+          "lon": -79.391108
+        }
+      ]
+    },
+    {
+      "id": "hospital",
+      "label": "Garrett Regional Medical Center",
+      "points": [
+        {
+          "name": "Garrett Regional Medical Center",
+          "lat": 39.4136759,
+          "lon": -79.401118
+        }
+      ]
+    }
+  ]
+}

@@ -20,8 +20,10 @@ Because line of sight is reciprocal, accumulating these gives per land cell:
   the water actually looks (screen-space area), so near water dominates a
   distant sliver.
 
-Parcel stats (mean over lot, max "best spot") come from zonal statistics of
-these rasters over Maryland parcel polygons.
+Parcel stats come from zonal statistics over Maryland parcel polygons. Scoring
+uses the 90th percentile (P90) rather than a single best pixel: it represents
+a strong view available across at least 10% of the sampled parcel cells and is
+less vulnerable to one-cell artifacts.
 
 The web map also has a **point inspector**: click anywhere and the browser
 raytraces sightlines to all ~5,700 lake sample points over the same DEM
@@ -30,21 +32,34 @@ hidden water gray, with the acreage total.
 
 ## Lot finder
 
-The map's **Lot finder** scores and ranks parcels (0-100, percentile-based):
+The map's **Lot finder** combines independently weighted 0-100 regional
+percentiles:
 
-- **Rank by**: best view, or view per dollar of SDAT assessed total value,
-  assessed land value, or asking price.
-- **View blend** slider mixes total visible lake acres with the perceived
-  (solid-angle) size; uses the currently selected eye height and each lot's
-  best spot.
-- Filters: residential only, undeveloped only (no year built), minimum acres.
-- Scored parcels are choropleth-colored on the map; the top 15 list zooms to
-  each lot. Popups show score, assessed value, and last sale price/year.
+- View: visible lake area and perceived (solid-angle) size, kept separate.
+- Property: lot acres, usable acres at no more than 15% slope, and distance to
+  the lake (approximately waterfront within 15 m).
+- Value: lower assessed land value, higher assessed improvement value, and
+  lower asking price when a matched listing exists.
+- Access: estimated drive time to I-68 eastbound at Keysers Ridge, Honi Honi,
+  Wisp, the nearer of two full grocery stores, and Garrett Regional Medical
+  Center.
+
+The final score is `sum(metric percentile × weight) / sum(weights)`. Reference
+percentiles are fixed across the regional parcel set, so filtering does not
+renormalize the scores. Sliders update a live ranking after the first run, and
+presets provide Balanced, View First, Vacant Land, Existing Home, and Access
+starting points. Popups show the raw metrics and current score contribution.
+
+Drive times use a cached OpenStreetMap road graph with a regional mountain-road
+calibration. They are planning estimates, not live-traffic ETAs. Destinations
+live in `data/destinations.json`; its generic grouped-point format is also the
+extension point for a future geocoded home-address destination.
 
 **Current listings:** there is no public MLS API, so paste lots you are
 watching into `data/listings.csv` (columns `address,price,url`, e.g.
-`123 Lake Shore Dr,\$599000,https://...`), then rerun steps 04-05. Matched
-parcels get a FOR SALE badge and can be ranked by view per asking dollar.
+`123 Lake Shore Dr,\$599000,https://...`), then rerun the parcel and webmap
+steps. Matched parcels get a FOR SALE badge and can use asking-price
+affordability as a weighted metric.
 
 **Caveat:** bare-earth terrain only — trees and buildings are ignored, so this
 is "what the lot *could* see with cleared sightlines," an optimistic bound.
@@ -68,7 +83,8 @@ uv sync
 uv run python scripts/step01_download.py   # ~500 MB DEM + parcels + lake
 uv run python scripts/step02_prepare.py    # warp DEM, masks, lake samples
 uv run python scripts/step03_viewshed.py   # cumulative viewshed (~1 min on 8 cores)
-uv run python scripts/step04_parcels.py    # per-parcel zonal stats
+uv run python scripts/step04_routes.py     # OSM road graph + drive times
+uv run python scripts/step04_parcels.py    # parcel view/property/value metrics
 uv run python scripts/step05_webmap.py     # PNG overlays + map data
 uv run python scripts/step06_pointdata.py  # DEM + lake points for the inspector
 open output/webmap/index.html              # works from file://, no server needed
